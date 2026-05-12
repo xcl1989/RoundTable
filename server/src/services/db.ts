@@ -80,11 +80,11 @@ function migrate(db: Database.Database) {
   }
 }
 
-export function createDiscussion(topic: string, mode: string = "roundtable", totalRounds: number = 3, roleCount: number = 4) {
+export function createDiscussion(topic: string, mode: string = "roundtable", totalRounds: number = 3, roleCount: number = 4, moderatorModel: string = "") {
   const db = getDb();
   const r = db.prepare(
-    "INSERT INTO discussions (topic, mode, total_rounds, role_count) VALUES (?, ?, ?, ?)"
-  ).run(topic, mode, totalRounds, roleCount);
+    "INSERT INTO discussions (topic, mode, total_rounds, role_count, moderator_model) VALUES (?, ?, ?, ?, ?)"
+  ).run(topic, mode, totalRounds, roleCount, moderatorModel);
   return getDiscussion(r.lastInsertRowid as number);
 }
 

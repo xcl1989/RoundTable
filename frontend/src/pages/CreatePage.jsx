@@ -74,7 +74,7 @@ export default function CreatePage() {
     setResearchThinking("");
     let discId = null;
     try {
-      const disc = await createDiscussion(topic, "roundtable", 10, roleCount);
+      const disc = await createDiscussion(topic, "roundtable", 10, roleCount, moderatorModel);
       discId = disc.id;
       setDiscussion(disc);
       setStep(1);

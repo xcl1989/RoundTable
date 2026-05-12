@@ -15,9 +15,9 @@ import { coordinator } from "../services/coordinator.js";
 const app = new Hono();
 
 app.post("/", async (c) => {
-  const body = await c.req.json<{ topic?: string; mode?: string; total_rounds?: number; role_count?: number }>().catch(() => ({}));
+  const body = await c.req.json<{ topic?: string; mode?: string; total_rounds?: number; role_count?: number; moderator_model?: string }>().catch(() => ({}));
   if (!body.topic) return c.json({ error: "topic required" }, 400);
-  const disc = createDiscussion(body.topic, body.mode || "roundtable", body.total_rounds || 10, body.role_count || 4);
+  const disc = createDiscussion(body.topic, body.mode || "roundtable", body.total_rounds || 10, body.role_count || 4, body.moderator_model || "");
   return c.json(disc);
 });
 

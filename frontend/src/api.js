@@ -13,10 +13,10 @@ async function request(path, options = {}) {
   return res.json();
 }
 
-export function createDiscussion(topic, mode = "roundtable", totalRounds = 10, roleCount = 4) {
+export function createDiscussion(topic, mode = "roundtable", totalRounds = 10, roleCount = 4, moderatorModel = null) {
   return request("/discussions", {
     method: "POST",
-    body: JSON.stringify({ topic, mode, total_rounds: totalRounds, role_count: roleCount }),
+    body: JSON.stringify({ topic, mode, total_rounds: totalRounds, role_count: roleCount, moderator_model: moderatorModel ? JSON.stringify(moderatorModel) : "" }),
   });
 }
 
