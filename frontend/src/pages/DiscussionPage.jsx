@@ -292,7 +292,7 @@ export default function DiscussionPage() {
         setStarting(false);
         setCurrentSpeaker(null);
         message.success("圆桌讨论结束");
-        reloadDiscussion();
+        reloadParticipants();
         break;
       case "error":
         message.error(data.message);

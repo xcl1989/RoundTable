@@ -256,6 +256,17 @@ export class DiscussionCoordinator {
       console.error("Role parsing failed, raw result (first 500 chars):", rolesResult?.slice(0, 500), e);
     }
 
+    // Fallback: retry role generation with non-streaming sendPrompt if streaming returned incomplete text
+    if (roles.length === 0 && onEvent) {
+      emit("research_status", { message: "正在重试角色生成..." });
+      const retryResult = await sendPrompt(modSession, GENERATE_ROLES_PROMPT(disc.topic, question, news, roleCount), undefined, moderatorModel);
+      try {
+        let jsonText = retryResult.text.match(/```(?:json)?\s*([\[][\s\S]*?[\]][\s\S]*?)\s*```/)?.[1];
+        if (!jsonText) jsonText = retryResult.text.match(/\[[\s\S]*\]/)?.[0];
+        if (jsonText) roles = JSON.parse(jsonText);
+      } catch {}
+    }
+
     updateDiscussion(discussionId, { question, news_summary: news, title: question });
 
     emit("research_done", { news, question, roles });
