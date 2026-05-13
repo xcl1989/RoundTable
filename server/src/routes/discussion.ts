@@ -11,6 +11,7 @@ import {
   updateDiscussion,
 } from "../services/db.js";
 import { coordinator } from "../services/coordinator.js";
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, PageBreak, BorderStyle, ShadingType } from "docx";
 
 const app = new Hono();
 
@@ -162,6 +163,154 @@ app.post("/:id/add-rounds", async (c) => {
   coordinator.addRounds(id, body.count);
   const updated = getDiscussion(id);
   return c.json(updated);
+});
+
+app.get("/:id/export", async (c) => {
+  const id = parseInt(c.req.param("id"));
+  const disc = getDiscussion(id);
+  if (!disc) return c.json({ error: "not found" }, 404);
+
+  const participants = listParticipants(id) as any[];
+  const messages = listMessages(id) as any[];
+  const pMap = new Map(participants.map((p: any) => [p.id, p]));
+
+  const topic = disc.title || disc.topic;
+  const bg = disc.news_summary || "";
+  const summaryMsg = messages.filter((m: any) => m.type === "summary").pop();
+  const speechMsgs = messages.filter((m: any) => m.type !== "summary");
+
+  const roundGroups = new Map<number, any[]>();
+  for (const m of speechMsgs) {
+    const r = m.round || 0;
+    if (!roundGroups.has(r)) roundGroups.set(r, []);
+    roundGroups.get(r)!.push(m);
+  }
+  const sortedRounds = [...roundGroups.entries()].sort((a, b) => a[0] - b[0]);
+
+  const gold = "8B6914";
+  const darkGold = "6B5010";
+  const children: Paragraph[] = [];
+
+  children.push(
+    new Paragraph({
+      heading: HeadingLevel.TITLE,
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 400 },
+      children: [new TextRun({ text: "圆桌讨论记录", font: "Microsoft YaHei", size: 48, color: gold, bold: true })],
+    }),
+  );
+
+  children.push(
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 600 },
+      children: [new TextRun({ text: topic, font: "Microsoft YaHei", size: 32, color: "333333" })],
+    }),
+  );
+
+  children.push(
+    new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun({ text: "议题", font: "Microsoft YaHei" })] }),
+  );
+  for (const line of disc.topic.split("\n")) {
+    children.push(new Paragraph({ spacing: { after: 100 }, children: [new TextRun({ text: line, font: "Microsoft YaHei", size: 22 })] }));
+  }
+
+  if (bg) {
+    children.push(
+      new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun({ text: "讨论背景", font: "Microsoft YaHei" })] }),
+    );
+    for (const line of bg.split("\n")) {
+      children.push(new Paragraph({ spacing: { after: 100 }, children: [new TextRun({ text: line, font: "Microsoft YaHei", size: 22 })] }));
+    }
+  }
+
+  children.push(
+    new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun({ text: "与会嘉宾", font: "Microsoft YaHei" })] }),
+  );
+  for (const p of participants) {
+    const label = p.type === "user" ? "（用户）" : "";
+    const desc = p.role_prompt ? ` — ${p.role_prompt}` : "";
+    children.push(
+      new Paragraph({
+        spacing: { after: 80 },
+        children: [
+          new TextRun({ text: `${p.name}${label}`, font: "Microsoft YaHei", size: 22, bold: true, color: p.color || gold }),
+          new TextRun({ text: desc, font: "Microsoft YaHei", size: 20, color: "666666" }),
+        ],
+      }),
+    );
+  }
+
+  if (sortedRounds.length > 0) {
+    children.push(
+      new Paragraph({ children: [new PageBreak()] }),
+      new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun({ text: "讨论过程", font: "Microsoft YaHei" })] }),
+    );
+
+    for (const [roundNum, msgs] of sortedRounds) {
+      children.push(
+        new Paragraph({
+          heading: HeadingLevel.HEADING_2,
+          spacing: { before: 300 },
+          children: [new TextRun({ text: `第 ${roundNum} 轮`, font: "Microsoft YaHei", color: darkGold })],
+        }),
+      );
+      for (const m of msgs) {
+        const p = pMap.get(m.participant_id) as any;
+        const name = p?.name || "主持人";
+        const color = p?.color || gold;
+        children.push(
+          new Paragraph({
+            spacing: { before: 200, after: 60 },
+            children: [new TextRun({ text: name, font: "Microsoft YaHei", size: 22, bold: true, color })],
+          }),
+        );
+        for (const line of (m.content || "").split("\n")) {
+          children.push(new Paragraph({ spacing: { after: 60 }, children: [new TextRun({ text: line, font: "Microsoft YaHei", size: 22 })] }));
+        }
+      }
+    }
+  }
+
+  if (summaryMsg) {
+    children.push(
+      new Paragraph({ children: [new PageBreak()] }),
+      new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun({ text: "讨论总结", font: "Microsoft YaHei" })] }),
+    );
+    for (const line of (summaryMsg.content || "").split("\n")) {
+      children.push(new Paragraph({ spacing: { after: 100 }, children: [new TextRun({ text: line, font: "Microsoft YaHei", size: 22 })] }));
+    }
+  }
+
+  const doc = new Document({
+    styles: {
+      default: { document: { run: { font: "Microsoft YaHei", size: 22 } } },
+      paragraphStyles: [
+        {
+          id: "Heading1", name: "Heading 1", basedOn: "Normal", next: "Normal", quickFormat: true,
+          run: { size: 32, bold: true, color: gold, font: "Microsoft YaHei" },
+          paragraph: { spacing: { before: 360, after: 200 }, outlineLevel: 0 },
+        },
+        {
+          id: "Heading2", name: "Heading 2", basedOn: "Normal", next: "Normal", quickFormat: true,
+          run: { size: 28, bold: true, color: darkGold, font: "Microsoft YaHei" },
+          paragraph: { spacing: { before: 240, after: 160 }, outlineLevel: 1 },
+        },
+      ],
+    },
+    sections: [{
+      properties: {
+        page: { margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } },
+      },
+      children,
+    }],
+  });
+
+  const buffer = await Packer.toBuffer(doc);
+  const filename = encodeURIComponent(`${topic.slice(0, 20)}.docx`);
+  c.header("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+  c.header("Content-Disposition", `attachment; filename*=UTF-8''${filename}`);
+  return c.body(buffer);
 });
 
 app.get("/:id/messages", (c) => {

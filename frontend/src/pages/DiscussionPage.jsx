@@ -22,6 +22,7 @@ import {
   PlusOutlined,
   UserOutlined,
   MenuOutlined,
+  DownloadOutlined,
 } from "@ant-design/icons";
 import * as api from "../api.js";
 import ThinkingText from "../components/ThinkingText.jsx";
@@ -763,6 +764,27 @@ export default function DiscussionPage() {
               }}
             >
               追加 1 次发言
+            </Button>
+          )}
+          {!starting && messages.length > 0 && (
+            <Button
+              block
+              icon={<DownloadOutlined />}
+              onClick={async () => {
+                try {
+                  await api.exportDiscussion(id);
+                  message.success("导出成功");
+                } catch (e) {
+                  message.error(e.message);
+                }
+              }}
+              style={{
+                background: "rgba(201,169,81,0.08)",
+                borderColor: "rgba(201,169,81,0.3)",
+                color: "#C9A951",
+              }}
+            >
+              导出 Word 文档
             </Button>
           )}
           <Button block onClick={() => navigate("/")} style={{ color: "#8B7355", background: "transparent" }}>

@@ -214,3 +214,24 @@ export function generateSummary(id, onEvent) {
     }).catch(reject);
   });
 }
+
+export async function exportDiscussion(id) {
+  const res = await fetch(`${BASE}/discussions/${id}/export`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || res.statusText);
+  }
+  const blob = await res.blob();
+  const cd = res.headers.get("Content-Disposition") || "";
+  let filename = `discussion-${id}.docx`;
+  const m = cd.match(/filename\*=UTF-8''(.+)/i) || cd.match(/filename="?([^";]+)"?/i);
+  if (m) filename = decodeURIComponent(m[1]);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}

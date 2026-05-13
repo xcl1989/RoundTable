@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Layout, List, Button, Typography, Tag, Spin } from "antd";
-import { ArrowLeftOutlined } from "@ant-design/icons";
-import { listDiscussions } from "../api.js";
+import { Layout, List, Button, Typography, Tag, Spin, message } from "antd";
+import { ArrowLeftOutlined, DownloadOutlined } from "@ant-design/icons";
+import { listDiscussions, exportDiscussion } from "../api.js";
 
 const { Title, Text } = Typography;
 
@@ -68,6 +68,23 @@ export default function HistoryPage() {
                     >
                       查看
                     </Button>,
+                    ...(item.status === "completed" ? [
+                      <Button
+                        size="small"
+                        icon={<DownloadOutlined />}
+                        onClick={async () => {
+                          try {
+                            await exportDiscussion(item.id);
+                            message.success("导出成功");
+                          } catch (e) {
+                            message.error(e.message);
+                          }
+                        }}
+                        style={{ borderColor: "#8B6914", color: "#8B6914" }}
+                      >
+                        导出
+                      </Button>,
+                    ] : []),
                   ]}
                   style={{
                     background: "#FFFDF7",
