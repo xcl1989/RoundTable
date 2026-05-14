@@ -404,6 +404,12 @@ export class DiscussionCoordinator {
           if (!p?.wants_to_speak) break;
           await new Promise((r) => setTimeout(r, 1000));
         }
+        const userMsgs = listMessages(discussionId).filter((m: any) => m.participant_id === userRaised.id);
+        const latestUserMsg = userMsgs[userMsgs.length - 1];
+        if (latestUserMsg?.content) {
+          speechLog.push({ participantId: userRaised.id, name: userRaised.name, content: latestUserMsg.content });
+          lastSpeechPos.set(userRaised.id, speechLog.length - 1);
+        }
         recentSpeakers.push({ id: userRaised.id, name: userRaised.name });
         if (recentSpeakers.length > 10) recentSpeakers.shift();
         continue;
