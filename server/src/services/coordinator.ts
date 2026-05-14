@@ -29,6 +29,32 @@ function getParticipantModel(participant: any, totalSpeeches: number, speechInde
   return speechIndex > Math.floor(totalSpeeches * 2 / 3) ? PARTICIPANT_MODEL_LATE : PARTICIPANT_MODEL;
 }
 
+function fixJsonQuotes(text: string): string {
+  let result = "";
+  let inStr = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"' && (i === 0 || text[i - 1] !== "\\")) {
+      if (!inStr) {
+        inStr = true;
+        result += ch;
+      } else {
+        const after = text.slice(i + 1).match(/\S/);
+        const nextCh = after?.[0];
+        if (nextCh && !",}]:\n\r".includes(nextCh)) {
+          result += "\\u201c";
+        } else {
+          inStr = false;
+          result += ch;
+        }
+      }
+    } else {
+      result += ch;
+    }
+  }
+  return result;
+}
+
 const COLORS = ["#1890ff", "#f5222d", "#52c41a", "#fa8c16", "#722ed1", "#13c2c2", "#eb2f96", "#faad14"];
 
 const MODERATOR_SYSTEM = `你是一个圆桌讨论主持人。你的职责：
@@ -71,7 +97,8 @@ const GENERATE_ROLES_PROMPT = (topic: string, question: string, news: string, ro
 请生成${roleCount}个不同视角的讨论参与者，确保立场多元、背景多样。
 
 严格按以下JSON数组格式回复，不要加其他内容：
-[{"name": "姓名", "role": "身份背景，如：资深XX、XX领域专家", "stance": "核心观点倾向"}]`;
+[{"name": "姓名", "role": "身份背景，如：资深XX、XX领域专家", "stance": "核心观点倾向"}]
+注意：JSON字符串值内部不要使用英文双引号，如需引用请用中文引号「」或『』。`;
 
 const WHO_NEXT_PROMPT = (
   question: string,
@@ -222,10 +249,9 @@ export class DiscussionCoordinator {
         const bracketIdx = rolesResult.indexOf("[");
         if (bracketIdx >= 0) {
           let partial = rolesResult.slice(bracketIdx);
-          const lastComma = partial.lastIndexOf(",");
           const lastBrace = partial.lastIndexOf("}");
-          const cutPoint = lastBrace > 0 ? lastBrace + 1 : (lastComma > 0 ? lastComma : partial.length);
-          partial = partial.slice(0, cutPoint);
+          const cutPoint = lastBrace > 0 ? lastBrace + 1 : partial.length;
+          partial = fixJsonQuotes(partial.slice(0, cutPoint));
           for (const suffix of ["]", "}]"]) {
             try {
               roles = JSON.parse(partial + suffix);
@@ -236,7 +262,7 @@ export class DiscussionCoordinator {
       }
       // Layer 3: try line-by-line parsing for name/role/stance patterns
       if (roles.length === 0 && jsonText) {
-        roles = JSON.parse(jsonText);
+        roles = JSON.parse(fixJsonQuotes(jsonText));
       } else if (roles.length === 0) {
         const lines = rolesResult.split("\n");
         for (const line of lines) {
@@ -263,7 +289,22 @@ export class DiscussionCoordinator {
       try {
         let jsonText = retryResult.text.match(/```(?:json)?\s*([\[][\s\S]*?[\]][\s\S]*?)\s*```/)?.[1];
         if (!jsonText) jsonText = retryResult.text.match(/\[[\s\S]*\]/)?.[0];
-        if (jsonText) roles = JSON.parse(jsonText);
+        if (!jsonText) {
+          const bracketIdx = retryResult.text.indexOf("[");
+          if (bracketIdx >= 0) {
+            let partial = retryResult.text.slice(bracketIdx);
+            const lastBrace = partial.lastIndexOf("}");
+            const cutPoint = lastBrace > 0 ? lastBrace + 1 : partial.length;
+            partial = fixJsonQuotes(partial.slice(0, cutPoint));
+            for (const suffix of ["]", "}]"]) {
+              try { roles = JSON.parse(partial + suffix); break; } catch {}
+            }
+            jsonText = roles.length > 0 ? "ok" : undefined;
+          }
+        }
+        if (roles.length === 0 && jsonText) {
+          roles = JSON.parse(fixJsonQuotes(jsonText));
+        }
       } catch {}
     }
 
