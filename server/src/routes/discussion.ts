@@ -11,7 +11,7 @@ import {
   updateDiscussion,
 } from "../services/db.js";
 import { coordinator } from "../services/coordinator.js";
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, PageBreak, BorderStyle, ShadingType } from "docx";
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, PageBreak, BorderStyle, ShadingType, LevelFormat } from "docx";
 import { getModelDisplayName, ModelConfig } from "../services/opencode.js";
 
 function parseModelName(jsonStr: string, fallback = ""): string {
@@ -21,6 +21,65 @@ function parseModelName(jsonStr: string, fallback = ""): string {
   } catch {
     return fallback;
   }
+}
+
+function parseInlineMd(text: string): TextRun[] {
+  const runs: TextRun[] = [];
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  for (const part of parts) {
+    if (!part) continue;
+    if (part.startsWith("**") && part.endsWith("**")) {
+      runs.push(new TextRun({ text: part.slice(2, -2), font: "Microsoft YaHei", size: 22, bold: true }));
+    } else {
+      runs.push(new TextRun({ text: part, font: "Microsoft YaHei", size: 22 }));
+    }
+  }
+  return runs.length > 0 ? runs : [new TextRun({ text, font: "Microsoft YaHei", size: 22 })];
+}
+
+function mdToParagraphs(text: string, opts?: { headingColor?: string }): Paragraph[] {
+  const lines = text.split("\n");
+  const result: Paragraph[] = [];
+  for (const line of lines) {
+    const h3Match = line.match(/^###\s+(.+)/);
+    if (h3Match) {
+      result.push(new Paragraph({
+        spacing: { before: 200, after: 100 },
+        children: [new TextRun({ text: h3Match[1], font: "Microsoft YaHei", size: 24, bold: true, color: opts?.headingColor || "333333" })],
+      }));
+      continue;
+    }
+    const h2Match = line.match(/^##\s+(.+)/);
+    if (h2Match) {
+      result.push(new Paragraph({
+        spacing: { before: 280, after: 140 },
+        children: [new TextRun({ text: h2Match[1], font: "Microsoft YaHei", size: 26, bold: true, color: opts?.headingColor || "333333" })],
+      }));
+      continue;
+    }
+    const h1Match = line.match(/^#\s+(.+)/);
+    if (h1Match) {
+      result.push(new Paragraph({
+        spacing: { before: 300, after: 160 },
+        children: [new TextRun({ text: h1Match[1], font: "Microsoft YaHei", size: 28, bold: true, color: opts?.headingColor || "333333" })],
+      }));
+      continue;
+    }
+    const bulletMatch = line.match(/^-\s+(.+)/);
+    if (bulletMatch) {
+      result.push(new Paragraph({
+        numbering: { reference: "md-bullet", level: 0 },
+        spacing: { after: 60 },
+        children: parseInlineMd(bulletMatch[1]),
+      }));
+      continue;
+    }
+    if (line.trim() === "") {
+      continue;
+    }
+    result.push(new Paragraph({ spacing: { after: 100 }, children: parseInlineMd(line) }));
+  }
+  return result;
 }
 
 const app = new Hono();
@@ -229,9 +288,7 @@ app.get("/:id/export", async (c) => {
     children.push(
       new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun({ text: "讨论背景", font: "Microsoft YaHei" })] }),
     );
-    for (const line of bg.split("\n")) {
-      children.push(new Paragraph({ spacing: { after: 100 }, children: [new TextRun({ text: line, font: "Microsoft YaHei", size: 22 })] }));
-    }
+    children.push(...mdToParagraphs(bg));
   }
 
   const moderatorModel = parseModelName(disc.moderator_model, summaryMsg?.model_name || "");
@@ -288,9 +345,7 @@ app.get("/:id/export", async (c) => {
             children: [new TextRun({ text: name, font: "Microsoft YaHei", size: 22, bold: true, color })],
           }),
         );
-        for (const line of (m.content || "").split("\n")) {
-          children.push(new Paragraph({ spacing: { after: 60 }, children: [new TextRun({ text: line, font: "Microsoft YaHei", size: 22 })] }));
-        }
+        children.push(...mdToParagraphs(m.content || ""));
       }
     }
   }
@@ -312,12 +367,22 @@ app.get("/:id/export", async (c) => {
         }),
       );
     }
-    for (const line of (summaryMsg.content || "").split("\n")) {
-      children.push(new Paragraph({ spacing: { after: 100 }, children: [new TextRun({ text: line, font: "Microsoft YaHei", size: 22 })] }));
-    }
+    children.push(...mdToParagraphs(summaryMsg.content || ""));
   }
 
   const doc = new Document({
+    numbering: {
+      config: [{
+        reference: "md-bullet",
+        levels: [{
+          level: 0,
+          format: LevelFormat.BULLET,
+          text: "\u2022",
+          alignment: AlignmentType.LEFT,
+          style: { paragraph: { indent: { left: 720, hanging: 360 } } },
+        }],
+      }],
+    },
     styles: {
       default: { document: { run: { font: "Microsoft YaHei", size: 22 } } },
       paragraphStyles: [
