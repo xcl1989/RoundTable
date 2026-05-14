@@ -12,6 +12,16 @@ import {
 } from "../services/db.js";
 import { coordinator } from "../services/coordinator.js";
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, PageBreak, BorderStyle, ShadingType } from "docx";
+import { getModelDisplayName, ModelConfig } from "../services/opencode.js";
+
+function parseModelName(jsonStr: string, fallback = ""): string {
+  if (!jsonStr) return fallback;
+  try {
+    return getModelDisplayName(JSON.parse(jsonStr) as ModelConfig);
+  } catch {
+    return fallback;
+  }
+}
 
 const app = new Hono();
 
@@ -224,18 +234,31 @@ app.get("/:id/export", async (c) => {
     }
   }
 
+  const moderatorModel = parseModelName(disc.moderator_model, summaryMsg?.model_name || "");
+
   children.push(
     new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun({ text: "与会嘉宾", font: "Microsoft YaHei" })] }),
+  );
+  children.push(
+    new Paragraph({
+      spacing: { after: 80 },
+      children: [
+        new TextRun({ text: "主持人", font: "Microsoft YaHei", size: 22, bold: true, color: gold }),
+        new TextRun({ text: moderatorModel ? ` — ${moderatorModel}` : "", font: "Microsoft YaHei", size: 20, color: "666666" }),
+      ],
+    }),
   );
   for (const p of participants) {
     const label = p.type === "user" ? "（用户）" : "";
     const desc = p.role_prompt ? ` — ${p.role_prompt}` : "";
+    const modelName = parseModelName(p.model_config || "");
+    const modelTag = modelName && p.type !== "user" ? ` · ${modelName}` : "";
     children.push(
       new Paragraph({
         spacing: { after: 80 },
         children: [
           new TextRun({ text: `${p.name}${label}`, font: "Microsoft YaHei", size: 22, bold: true, color: p.color || gold }),
-          new TextRun({ text: desc, font: "Microsoft YaHei", size: 20, color: "666666" }),
+          new TextRun({ text: `${desc}${modelTag}`, font: "Microsoft YaHei", size: 20, color: "666666" }),
         ],
       }),
     );
@@ -273,10 +296,22 @@ app.get("/:id/export", async (c) => {
   }
 
   if (summaryMsg) {
+    const summaryModel = summaryMsg.model_name || moderatorModel;
     children.push(
       new Paragraph({ children: [new PageBreak()] }),
-      new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun({ text: "讨论总结", font: "Microsoft YaHei" })] }),
+      new Paragraph({
+        heading: HeadingLevel.HEADING_1,
+        children: [new TextRun({ text: "讨论总结", font: "Microsoft YaHei" })],
+      }),
     );
+    if (summaryModel) {
+      children.push(
+        new Paragraph({
+          spacing: { after: 120 },
+          children: [new TextRun({ text: `生成模型：${summaryModel}`, font: "Microsoft YaHei", size: 20, color: "666666", italics: true })],
+        }),
+      );
+    }
     for (const line of (summaryMsg.content || "").split("\n")) {
       children.push(new Paragraph({ spacing: { after: 100 }, children: [new TextRun({ text: line, font: "Microsoft YaHei", size: 22 })] }));
     }
